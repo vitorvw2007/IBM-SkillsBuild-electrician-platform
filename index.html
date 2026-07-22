@@ -1,0 +1,1117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Electrician Job Dispatch Platform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<!--
+  Electrician Job Dispatch Platform (single-page app)
+  ---------------------------------------------------------------------------
+  One HTML file holding: the design-system CSS (below), the auth screens, the app
+  shell + all screens (Requests / Scheduled / Purchase / detail), and the modals
+  (settings, import, schedule, auto-schedule preview). Behaviour lives in the
+  scripts loaded at the very bottom, in dependency order (after the Supabase JS
+  CDN bundle):
+    supabase-config.js      (Supabase project URL + anon key)
+    js-auth.js              (auth: login/signup, password reset, session lifecycle)
+    js-inference-engine.js  (offline classifier)
+    js-ai-providers.js      (multi-provider AI network layer, incl. IBM watsonx.ai)
+    js-ai-enrichment.js     (AI job re-classification)
+    js-app.js               (state, screens, scheduling, purchase list)
+  Design language is IBM-Carbon-inspired: Space Grotesk / Space Mono, a blue60
+  (#0f62fe) accent, near-square 4px corners, and high/med/low status colours.
+-->
+<style>
+  /* ---- Design tokens: colours, status palette, spacing, fonts (used app-wide) ---- */
+  :root{
+    /* Carbon grays */
+    --g100:#161616;
+    --g90:#262626;
+    --g80:#393939;
+    --g70:#525252;
+    --g60:#6f6f6f;
+    --g50:#8d8d8d;
+    --g30:#c6c6c6;
+    --g20:#e0e0e0;
+    --g10:#f4f4f4;
+
+
+    /* Interactive blue */
+    --blue60:#0f62fe;
+    --blue70:#0043ce;
+    --blue10:#edf5ff;
+
+
+    /* Text and surface roles (kept under their existing names so component rules
+       written against them keep working; values remapped to Carbon) */
+    --ink:#161616;
+    --ink-soft:#525252;
+    --muted:#6f6f6f;
+    --line:#e0e0e0;
+    --surface:#ffffff;
+    --canvas:#f4f4f4;
+
+
+    /* Status colors. The bright high/med/low values are accents (borders, bars,
+       swatches); med-text/low-text are the readable text variants on tinted backgrounds. */
+    --high:#da1e28;        --high-bg:#fff1f1;   --high-line:#ffd7d9;
+    --med:#f1c21b;         --med-bg:#fcf4d6;    --med-line:#f3dd8c;  --med-text:#684e00;
+    --low:#24a148;         --low-bg:#defbe6;    --low-line:#a7f0ba;  --low-text:#0e6027;
+
+
+    --radius:4px;
+    --shadow:0 1px 2px rgba(0,0,0,.08);
+    --font-sans:'Space Grotesk',system-ui,-apple-system,sans-serif;
+    --font-mono:'Space Mono',ui-monospace,monospace;
+  }
+
+
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:var(--font-sans);
+    color:var(--ink);
+    background:var(--canvas);
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+
+
+  /* ---------- App shell: sidebar + main column ---------- */
+  .app-shell{display:flex;min-height:100vh}
+
+
+  .sidebar{
+    width:236px;flex:none;background:var(--g100);color:#fff;
+    display:flex;flex-direction:column;padding:20px 0;
+    position:sticky;top:0;height:100vh;overflow-y:auto;
+  }
+  .sidebar-brand{display:flex;align-items:center;gap:12px;padding:0 20px 22px}
+  .bolt{
+    width:34px;height:34px;border-radius:7px;
+    background:var(--blue60);
+    display:grid;place-items:center;
+    flex:none;
+  }
+  .bolt svg{width:18px;height:18px;display:block}
+  .brand-name{font-weight:700;font-size:1rem;letter-spacing:-.01em}
+  .brand-sub{font-size:.74rem;color:var(--g50);font-family:var(--font-mono);margin-top:1px}
+
+
+  .sidebar-nav{display:flex;flex-direction:column}
+  .nav-label{
+    font-family:var(--font-mono);font-size:.66rem;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--g60);padding:0 20px;margin:6px 0 8px
+  }
+  .nav-item{
+    display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+    background:none;border:none;color:var(--g30);font-family:var(--font-sans);
+    font-size:.88rem;font-weight:500;padding:11px 20px;cursor:pointer;
+    border-left:3px solid transparent;transition:background .12s,color .12s;
+  }
+  .nav-item svg{width:16px;height:16px;flex:none}
+  .nav-item:hover{background:var(--g90);color:#fff}
+  .nav-item.active{background:var(--g90);color:#fff;border-left-color:var(--blue60)}
+  .nav-item:focus-visible{outline:2px solid var(--blue60);outline-offset:-2px}
+
+
+  .sidebar-spacer{flex:1}
+
+
+  .base-card{
+    margin:0 14px;padding:12px 14px;border-radius:var(--radius);cursor:pointer;
+    background:var(--g90);border:1px solid var(--g80);
+    transition:background .12s;
+  }
+  .base-card:hover{background:var(--g80)}
+  .base-card:focus-visible{outline:2px solid var(--blue60);outline-offset:1px}
+  .base-card-label{
+    display:block;color:var(--g60);font-family:var(--font-mono);font-size:.66rem;
+    text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px
+  }
+  .base-card b{color:#fff;font-weight:600;font-size:.82rem;display:block;word-break:break-word}
+
+  .account-card{
+    margin:0 14px 10px;padding:12px 14px;border-radius:var(--radius);
+    background:var(--g90);border:1px solid var(--g80);
+  }
+  .account-card b{color:#fff;font-weight:600;font-size:.82rem;display:block;word-break:break-word;margin-bottom:8px}
+  .account-logout{
+    background:none;border:1px solid var(--g70);color:var(--g30);
+    font-family:var(--font-sans);font-size:.76rem;font-weight:600;
+    padding:6px 10px;border-radius:0;cursor:pointer;transition:background .12s,color .12s;
+  }
+  .account-logout:hover{background:var(--g80);color:#fff}
+  .account-logout:focus-visible{outline:2px solid var(--blue60);outline-offset:1px}
+
+  /* ---------- Auth screen (login / signup) ---------- */
+  .auth-screen{
+    min-height:100vh;display:flex;align-items:center;justify-content:center;
+    background:var(--canvas);padding:20px;
+  }
+  .auth-card{
+    width:100%;max-width:380px;background:var(--surface);border:1px solid var(--line);
+    border-radius:var(--radius);border-top:3px solid var(--blue60);
+    padding:32px 28px;box-shadow:var(--shadow);
+  }
+  .auth-brand{display:flex;align-items:center;gap:12px;margin-bottom:24px}
+  .auth-brand .brand-name{color:var(--ink);font-weight:700;font-size:1.05rem}
+  .auth-brand .brand-sub{color:var(--muted);font-size:.78rem;font-family:var(--font-mono)}
+  .auth-card h2{margin:0 0 18px;font-size:1.15rem;font-weight:700}
+  .auth-message{
+    font-size:.84rem;color:var(--ink-soft);background:var(--canvas);border:1px solid var(--line);
+    border-radius:var(--radius);padding:10px 12px;margin:0 0 16px;
+  }
+  .auth-message.auth-error{color:var(--high);background:var(--high-bg);border-color:var(--high-line)}
+  .auth-footer{margin-top:18px;font-size:.84rem;color:var(--muted);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+  .auth-link-btn{
+    background:none;border:none;color:var(--blue60);font-family:var(--font-sans);
+    font-size:.84rem;font-weight:600;cursor:pointer;padding:0;
+  }
+  .auth-link-btn:hover{color:var(--blue70);text-decoration:underline}
+  .auth-forgot{margin-top:10px;text-align:right}
+
+
+  .main{flex:1;min-width:0;display:flex;flex-direction:column}
+  .main-topbar{
+    background:var(--surface);border-bottom:1px solid var(--line);
+    padding:22px 32px;display:flex;justify-content:space-between;align-items:flex-start;
+    gap:16px;flex-wrap:wrap;
+  }
+  .main-topbar-actions{display:flex;gap:10px;align-items:center;flex:none}
+
+
+  /* ---------- Dropdown menu ---------- */
+  .menu-wrap{position:relative}
+  .menu{
+    position:absolute;top:calc(100% + 6px);right:0;z-index:50;
+    background:var(--surface);border:1px solid var(--g30);border-radius:var(--radius);
+    box-shadow:0 8px 24px rgba(0,0,0,.18);min-width:230px;padding:4px;
+    display:flex;flex-direction:column;
+  }
+  .menu[hidden]{display:none}
+  .menu.menu-center{right:auto;left:50%;transform:translateX(-50%)}
+  .menu-item{
+    display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+    background:none;border:none;color:var(--ink);font-family:var(--font-sans);
+    font-size:.86rem;font-weight:500;padding:10px 12px;cursor:pointer;border-radius:0;
+    transition:background .12s;
+  }
+  .menu-item:hover{background:var(--g10)}
+  .menu-item:focus-visible{outline:2px solid var(--blue60);outline-offset:-2px}
+  .menu-item svg{width:16px;height:16px;flex:none;color:var(--g60)}
+  .menu-item-danger{color:var(--high)}
+  .menu-item-danger svg{color:var(--high)}
+  .menu-item-danger:hover{background:var(--high-bg)}
+  .menu-divider{height:1px;background:var(--line);margin:4px 0}
+
+
+  /* ---------- Layout ---------- */
+  .wrap{max-width:1120px;margin:0 auto;padding:26px 32px 64px;width:100%}
+
+
+  .eyebrow{
+    font-family:var(--font-mono);font-size:.72rem;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--ink-soft);font-weight:600;margin:0 0 6px
+  }
+  h1{font-size:1.5rem;margin:0;font-weight:700;letter-spacing:-.01em}
+  .lede{color:var(--muted);font-size:.92rem;margin:6px 0 0}
+
+
+  /* ---------- Summary strip ---------- */
+  .summary{display:flex;gap:12px;flex-wrap:wrap;margin:0 0 22px}
+  .metric{
+    background:var(--surface);border:1px solid var(--line);border-top:3px solid var(--g30);
+    border-radius:var(--radius);padding:13px 16px;min-width:128px;flex:1 1 128px;
+  }
+  .metric.high{border-top-color:var(--high)}
+  .metric.med{border-top-color:var(--med)}
+  .metric.low{border-top-color:var(--low)}
+  .metric .n{font-size:1.5rem;font-weight:700;font-family:var(--font-mono);line-height:1;color:var(--ink)}
+  .metric .l{font-size:.76rem;color:var(--muted);margin-top:5px}
+
+
+  /* ---------- Sort toolbar (Requests screen) ---------- */
+  .board-toolbar{display:flex;align-items:center;gap:10px;margin:0 0 16px}
+  .board-toolbar label{font-size:.8rem;font-weight:600;color:var(--ink-soft)}
+  .board-toolbar select{
+    font-family:var(--font-sans);font-size:.84rem;color:var(--ink);
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:8px 12px;cursor:pointer;min-width:180px;
+  }
+  .board-toolbar select:focus{outline:none;border-color:var(--blue60);box-shadow:0 0 0 1px var(--blue60)}
+
+
+  /* ---------- Urgency board (Requests screen) ---------- */
+  .board.board-urgency{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .board.board-days{display:block}
+  .board-col{display:flex;flex-direction:column;gap:12px;min-width:0}
+  .board-col-head{
+    display:flex;align-items:center;justify-content:space-between;
+    padding-bottom:10px;border-bottom:2px solid var(--g30);margin-bottom:2px;
+  }
+  .board-col-head.high{border-bottom-color:var(--high)}
+  .board-col-head.med{border-bottom-color:var(--med)}
+  .board-col-head.low{border-bottom-color:var(--low)}
+  .board-col-title{font-size:.82rem;font-weight:600;letter-spacing:.01em;color:var(--ink)}
+  .board-col-count{
+    font-family:var(--font-mono);font-size:.76rem;color:var(--ink-soft);
+    background:var(--g10);padding:2px 8px;border-radius:var(--radius);
+  }
+  .board-col-empty{font-size:.82rem;color:var(--muted);padding:8px 0}
+
+
+  /* ---------- Day sections (Scheduled screen) ---------- */
+  .day-section{margin-bottom:22px}
+  .day-section-head{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    font-family:var(--font-mono);font-size:.78rem;font-weight:600;color:var(--ink-soft);
+    background:var(--g10);border:1px solid var(--line);border-radius:var(--radius);
+    padding:10px 14px;margin-bottom:12px;
+  }
+  .day-map-link{
+    font-family:var(--font-sans);font-size:.76rem;font-weight:600;color:#fff;
+    background:var(--blue60);padding:5px 12px;border-radius:0;text-decoration:none;
+    white-space:nowrap;flex:none;transition:background .12s;
+  }
+  .day-map-link:hover{background:var(--blue70)}
+  .day-map-link:focus-visible{outline:2px solid var(--blue60);outline-offset:2px}
+  .day-section-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+
+
+  /* ---------- Job card ---------- */
+  .job-card{
+    background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--g30);
+    border-radius:var(--radius);padding:14px 16px;cursor:pointer;
+    display:flex;flex-direction:column;gap:10px;transition:box-shadow .12s,border-color .12s;
+  }
+  .job-card:hover{box-shadow:0 2px 6px rgba(0,0,0,.1)}
+  .job-card:focus-visible{outline:2px solid var(--blue60);outline-offset:2px}
+  .job-card.high{border-left-color:var(--high)}
+  .job-card.med{border-left-color:var(--med)}
+  .job-card.low{border-left-color:var(--low)}
+  .job-card.reschedule{background:var(--med-bg);border-color:var(--med-line)}
+  .job-card-reschedule{
+    font-family:var(--font-sans);font-size:.76rem;font-weight:600;color:var(--med-text);
+    background:#fbeeb8;border:1px solid var(--med-line);border-radius:var(--radius);padding:6px 8px;
+  }
+  .reschedule-note{
+    font-size:.85rem;color:var(--med-text);background:var(--med-bg);border:1px solid var(--med-line);
+    border-radius:var(--radius);padding:10px 12px;margin:0 0 12px;
+  }
+  .checks li.flag-urgent{
+    list-style:none;background:var(--med-bg);border:1px solid var(--med-line);color:var(--med-text);
+    border-radius:var(--radius);padding:8px 10px;margin:0 0 6px;font-weight:600;
+  }
+  .flag-clear{font-weight:600;color:var(--blue60);white-space:nowrap;text-decoration:underline}
+  .autoplan-row{padding:10px 0;border-top:1px solid var(--line)}
+  .autoplan-row:first-child{border-top:none}
+  .autoplan-when{font-family:var(--font-mono);font-size:.82rem;font-weight:700;color:var(--blue60)}
+  .autoplan-job{font-size:.9rem;color:var(--ink);margin-top:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .autoplan-flag{font-size:.68rem;font-weight:700;letter-spacing:.02em;text-transform:uppercase;
+    color:var(--med-text);background:var(--med-bg);border:1px solid var(--med-line);padding:2px 7px;border-radius:0}
+  .autoplan-flag-move{color:var(--blue70);background:var(--blue10);border-color:var(--blue60)}
+  .job-card-window{
+    font-family:var(--font-mono);font-size:.8rem;font-weight:700;color:var(--blue60);
+    letter-spacing:.01em;
+  }
+  .job-card-title{font-size:.96rem;font-weight:600;color:var(--ink)}
+  .job-card-meta{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-family:var(--font-mono);font-size:.78rem;color:var(--muted);letter-spacing:.01em}
+  .job-card-date{color:var(--ink-soft);white-space:nowrap;flex:none}
+  .job-card-date.missing-date{color:var(--g50);font-style:italic}
+  .job-card-rule{height:1px;background:var(--line)}
+  .job-card-contacts{display:flex;flex-direction:column;gap:6px}
+  .job-card-contact{display:flex;align-items:center;gap:8px;font-size:.82rem;color:var(--ink-soft)}
+  .job-card-contact svg{width:13px;height:13px;flex:none;color:var(--g50)}
+  .job-card-footer{display:flex;justify-content:space-between;align-items:center;margin-top:2px}
+  .job-card-schedule-btn{
+    background:none;border:none;color:var(--blue60);font-family:var(--font-sans);
+    font-size:.82rem;font-weight:600;cursor:pointer;padding:0;
+  }
+  .job-card-schedule-btn:hover{color:var(--blue70);text-decoration:underline}
+  .job-card-schedule-btn:focus-visible{outline:2px solid var(--blue60);outline-offset:2px}
+  .job-card-open{display:flex;align-items:center;gap:3px;font-size:.78rem;color:var(--muted)}
+  .job-card-open svg{width:13px;height:13px}
+
+
+  .mono{font-family:var(--font-mono);font-size:.84rem;letter-spacing:.01em}
+  .pill{
+    display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:600;
+    padding:3px 9px;border-radius:0;white-space:nowrap;font-family:var(--font-mono)
+  }
+  .pill.high{background:var(--high-bg);color:var(--high);border:1px solid var(--high-line)}
+  .pill.med{background:var(--med-bg);color:var(--med-text);border:1px solid var(--med-line)}
+  .pill.low{background:var(--low-bg);color:var(--low-text);border:1px solid var(--low-line)}
+  .missing{color:var(--g50);font-style:italic;font-size:.84rem}
+  .hint{font-size:.78rem;color:var(--muted);margin:16px 2px 0;display:flex;align-items:center;gap:7px}
+
+
+  /* ---------- AI enrichment ---------- */
+  .ai-badge{
+    display:inline-flex;align-items:center;gap:6px;font-family:var(--font-mono);
+    font-size:.72rem;font-weight:600;color:var(--blue60);background:var(--blue10);
+    border:1px solid var(--blue60);padding:3px 9px;border-radius:0;width:fit-content;
+  }
+  .ai-badge::before{
+    content:"";width:6px;height:6px;border-radius:50%;background:var(--blue60);flex:none;
+    animation:ai-pulse 1.1s ease-in-out infinite;
+  }
+  @keyframes ai-pulse{0%,100%{opacity:.35}50%{opacity:1}}
+  .ai-error{font-size:.84rem;color:var(--high);margin:8px 0 0}
+  .deadline-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
+  .deadline-grid > div{display:flex;flex-direction:column;gap:4px}
+  .deadline-grid span{font-size:.76rem;color:var(--muted)}
+  .deadline-grid input{width:100%}
+
+
+  /* ---------- Add material (detail view) ---------- */
+  .mat .mat-remove{
+    background:none;border:none;color:var(--g50);cursor:pointer;font-size:1rem;
+    line-height:1;padding:0 2px;border-radius:0;
+  }
+  .mat .mat-remove:hover{color:var(--high)}
+  .mat-actions{display:flex;align-items:center;gap:10px}
+  .add-mat-btn{
+    background:none;border:none;color:var(--blue60);font-family:var(--font-sans);
+    font-size:.84rem;font-weight:600;cursor:pointer;padding:8px 0 0;
+  }
+  .add-mat-btn:hover{color:var(--blue70);text-decoration:underline}
+  .add-mat-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+  .add-mat-form input,.add-mat-form select{
+    padding:8px 10px;border:1px solid var(--line);border-radius:var(--radius);
+    font-family:var(--font-sans);font-size:.86rem;background:var(--surface);color:var(--ink);
+  }
+  .add-mat-form input{flex:1 1 160px;min-width:120px}
+  .add-mat-form .add-mat-unit{flex:0 1 120px;min-width:90px}
+  .add-mat-form input:focus,.add-mat-form select:focus{outline:none;border-color:var(--blue60);box-shadow:0 0 0 1px var(--blue60)}
+
+
+  /* ---------- Purchase list ---------- */
+  .purchase-toolbar{
+    display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px;
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px 18px;margin-bottom:18px;
+  }
+  .purchase-field{display:flex;flex-direction:column;gap:5px}
+  .purchase-field label{font-size:.74rem;font-weight:600;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em}
+  .purchase-field input[type=date]{
+    font-family:var(--font-mono);font-size:.86rem;padding:8px 10px;
+    border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);color:var(--ink);
+  }
+  .purchase-field input[type=date]:focus{outline:none;border-color:var(--blue60);box-shadow:0 0 0 1px var(--blue60)}
+  .purchase-summary{margin-left:auto;font-size:.84rem;color:var(--muted);font-family:var(--font-mono)}
+  .purchase-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  .purchase-group-head{
+    font-size:.74rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;
+    padding:12px 18px;background:var(--g10);border-bottom:1px solid var(--line);
+  }
+  .purchase-row{
+    display:flex;align-items:center;gap:14px;padding:12px 18px;border-bottom:1px solid var(--line);
+  }
+  .purchase-row:last-child{border-bottom:none}
+  .purchase-row.in-stock .purchase-name{text-decoration:line-through;color:var(--g50)}
+  .purchase-row input[type=checkbox]{width:18px;height:18px;flex:none;cursor:pointer;accent-color:var(--blue60)}
+  .purchase-name{flex:1;font-size:.92rem;font-weight:500;color:var(--ink)}
+  .purchase-count{font-family:var(--font-mono);font-size:.74rem;color:var(--muted);white-space:nowrap;flex:none}
+  .purchase-qty{display:flex;align-items:center;gap:6px;flex:none}
+  .purchase-qty label{font-size:.74rem;color:var(--muted)}
+  .purchase-qty input[type=number]{width:64px}
+  .purchase-qty input{
+    padding:6px 8px;border:1px solid var(--line);border-radius:var(--radius);
+    font-family:var(--font-mono);font-size:.86rem;text-align:center;background:var(--surface);color:var(--ink);
+  }
+  .purchase-qty input.purchase-unit{width:62px;text-align:left}
+  .purchase-qty input:focus{outline:none;border-color:var(--blue60);box-shadow:0 0 0 1px var(--blue60)}
+
+
+  /* ---------- Purchase recommendations ---------- */
+  .rec-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-top:18px}
+  .rec-card.rec-unavailable{border-style:dashed;text-align:center}
+  .rec-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px}
+  .rec-last-generated{font-size:.76rem;color:var(--muted);font-family:var(--font-mono)}
+  .rec-prefs{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px;margin-bottom:14px}
+  .rec-prefs .purchase-field input,.rec-prefs .purchase-field select{
+    font-family:var(--font-sans);font-size:.86rem;padding:8px 10px;border:1px solid var(--line);
+    border-radius:var(--radius);background:var(--surface);color:var(--ink);
+  }
+  .rec-prefs .purchase-field input[type=number]{width:80px;font-family:var(--font-mono)}
+  .rec-prefs .purchase-field input:focus,.rec-prefs .purchase-field select:focus{outline:none;border-color:var(--blue60);box-shadow:0 0 0 1px var(--blue60)}
+  .rec-body{margin-top:6px}
+  .rec-summary{font-size:.9rem;color:var(--ink-soft);margin:0 0 14px}
+  .rec-store{border:1px solid var(--line);border-radius:var(--radius);margin-bottom:12px;overflow:hidden}
+  .rec-store-best{border-color:var(--blue60);box-shadow:0 0 0 1px var(--blue60)}
+  .rec-store-missing{padding:8px 14px;background:var(--med-bg);border-bottom:1px solid var(--med-line);color:var(--med-text);font-size:.8rem}
+  .rec-store-head{
+    display:flex;justify-content:space-between;align-items:center;gap:10px;
+    padding:10px 14px;background:var(--g10);font-weight:600;font-size:.9rem;color:var(--ink);
+  }
+  .rec-store-name{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .rec-store-meta{display:flex;align-items:center;gap:10px;flex:none}
+  .rec-store-distance{font-family:var(--font-mono);font-size:.78rem;color:var(--muted)}
+  .rec-store-total{font-family:var(--font-mono);color:var(--ink-soft)}
+  .rec-insight-badge{font-family:var(--font-sans);font-size:.66rem;font-weight:700;letter-spacing:.02em;color:var(--blue70);background:var(--blue10);border:1px solid var(--blue60);padding:2px 7px;border-radius:0;white-space:nowrap}
+  .rec-sort{display:flex;align-items:center;gap:8px;margin:0 0 12px}
+  .rec-sort label{font-size:.78rem;font-weight:600;color:var(--ink-soft)}
+  .rec-sort select{
+    font-family:var(--font-sans);font-size:.82rem;padding:6px 10px;border:1px solid var(--line);
+    border-radius:var(--radius);background:var(--surface);color:var(--ink);
+  }
+  .rec-sort select:focus{outline:none;border-color:var(--blue60);box-shadow:0 0 0 1px var(--blue60)}
+  .rec-item{display:flex;align-items:center;gap:10px;padding:9px 14px;border-top:1px solid var(--line);font-size:.88rem}
+  .rec-item-name{flex:1;color:var(--ink)}
+  .rec-item-qty{font-family:var(--font-mono);color:var(--muted);font-size:.8rem}
+  .rec-item-price{font-family:var(--font-mono);color:var(--ink-soft)}
+  .rec-item-link{font-size:.82rem;font-weight:600;color:var(--blue60);text-decoration:none}
+  .rec-item-link:hover{color:var(--blue70);text-decoration:underline}
+  .rec-sources{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px;font-size:.8rem}
+  .rec-sources-label{font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-size:.7rem}
+  .rec-sources a{color:var(--blue60);text-decoration:none;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rec-sources a:hover{text-decoration:underline}
+  .rec-disclaimer{margin:12px 0 0;font-size:.76rem;color:var(--muted);font-family:var(--font-mono)}
+
+
+  /* ---------- Detail view ---------- */
+  .hidden{display:none !important}
+  .back{
+    background:none;border:1px solid var(--line);color:var(--ink-soft);
+    font-family:var(--font-sans);font-size:.84rem;font-weight:500;
+    padding:8px 14px;border-radius:0;cursor:pointer;display:inline-flex;align-items:center;gap:8px;
+    margin-bottom:18px;transition:background .12s,border-color .12s
+  }
+  .back:hover{background:var(--surface);border-color:var(--g30)}
+  .back:focus-visible{outline:2px solid var(--blue60);outline-offset:2px}
+
+
+  .detail-head{
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:22px 24px;margin-bottom:18px;
+    display:flex;justify-content:space-between;align-items:flex-start;gap:18px;flex-wrap:wrap;
+    border-top:3px solid var(--blue60)
+  }
+  .detail-head.u-high{border-top-color:var(--high)}
+  .detail-head.u-med{border-top-color:var(--med)}
+  .detail-head.u-low{border-top-color:var(--low)}
+  .detail-head h2{margin:0;font-size:1.4rem;font-weight:700}
+  .detail-head .where{color:var(--muted);font-size:.9rem;margin-top:4px}
+
+
+  .grid{display:grid;grid-template-columns:1.35fr 1fr;gap:18px;align-items:start}
+  .card{
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:20px 22px
+  }
+  .card h3{
+    margin:0 0 16px;font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--ink-soft);font-weight:600;display:flex;align-items:center;gap:8px
+  }
+  .card h3 .num{
+    font-family:var(--font-mono);background:var(--blue60);color:#fff;
+    width:20px;height:20px;border-radius:2px;display:grid;place-items:center;font-size:.7rem
+  }
+
+
+  .kv{display:grid;grid-template-columns:140px 1fr;gap:10px 14px;font-size:.9rem}
+  .kv dt{color:var(--muted);font-weight:500}
+  .kv dd{margin:0;color:var(--ink);font-weight:500}
+  .kv dd.mono{font-family:var(--font-mono);font-weight:400}
+  .kv a{color:var(--blue60);text-decoration:none}
+  .kv a:hover{text-decoration:underline;color:var(--blue70)}
+
+
+  .divider{height:1px;background:var(--line);margin:18px 0}
+  .block-label{font-size:.74rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:0 0 10px}
+
+
+  .msg{
+    font-size:.9rem;color:var(--ink-soft);background:var(--canvas);
+    border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;font-style:italic
+  }
+
+
+  ul.checks{list-style:none;margin:0;padding:0}
+  ul.checks li{
+    display:flex;gap:10px;font-size:.88rem;padding:8px 0;border-bottom:1px dashed var(--line);color:var(--ink-soft)
+  }
+  ul.checks li:last-child{border-bottom:none}
+  ul.checks li::before{content:"?";font-family:var(--font-mono);color:var(--blue60);font-weight:700;flex:none}
+
+
+  .mat{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px dashed var(--line);font-size:.88rem}
+  .mat:last-child{border-bottom:none}
+  .prob{font-family:var(--font-mono);font-size:.68rem;font-weight:600;padding:3px 8px;border-radius:0;white-space:nowrap}
+  .prob.surely{background:var(--low-bg);color:var(--low-text);border:1px solid var(--low-line)}
+  .prob.likely{background:var(--med-bg);color:var(--med-text);border:1px solid var(--med-line)}
+  .prob.maybe{background:var(--g10);color:var(--muted);border:1px solid var(--g20)}
+
+
+  .eta{display:flex;gap:14px;flex-wrap:wrap;margin-top:4px}
+  .eta .box{flex:1 1 120px;background:var(--canvas);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px}
+  .eta .box .v{font-size:1.25rem;font-weight:700;font-family:var(--font-mono);line-height:1}
+  .eta .box .k{font-size:.72rem;color:var(--muted);margin-top:4px}
+
+
+  .sched-row{display:flex;align-items:flex-start;gap:10px;font-size:.88rem;padding:9px 0;border-bottom:1px dashed var(--line)}
+  .sched-row:last-child{border-bottom:none}
+  .sched-row .ico{flex:none;color:var(--blue60);margin-top:1px}
+  .slot{font-family:var(--font-mono);font-weight:600;color:var(--ink)}
+  .nearby-item{font-size:.84rem;color:var(--ink-soft);display:flex;justify-content:space-between;gap:10px;padding:6px 0}
+  .nearby-item .d{font-family:var(--font-mono);color:var(--muted);white-space:nowrap}
+
+
+  .note{
+    margin-top:26px;font-size:.78rem;color:var(--muted);
+    background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--blue60);
+    border-radius:var(--radius);padding:12px 16px
+  }
+
+
+  /* ---------- Modal ---------- */
+  .modal-overlay{
+    position:fixed;top:0;left:0;right:0;bottom:0;
+    background:rgba(0,0,0,.65);
+    display:flex;align-items:center;justify-content:center;
+    z-index:1000;padding:20px;
+  }
+  .modal{
+    background:var(--surface);border-radius:var(--radius);border:1px solid var(--g30);
+    box-shadow:0 8px 24px rgba(0,0,0,.25);
+    max-width:600px;width:100%;max-height:90vh;overflow:auto;
+  }
+  .modal-header{
+    padding:20px 24px;border-bottom:1px solid var(--line);
+    display:flex;justify-content:space-between;align-items:center;
+  }
+  .modal-header h2{margin:0;font-size:1.2rem;font-weight:700}
+  .modal-close{
+    background:none;border:none;color:var(--muted);cursor:pointer;
+    font-size:1.5rem;line-height:1;padding:0;width:32px;height:32px;
+    border-radius:0;transition:background .15s;
+  }
+  .modal-close:hover{background:var(--canvas)}
+  .modal-close:focus-visible{outline:2px solid var(--blue60);outline-offset:2px}
+  .modal-body{padding:24px}
+  .modal-footer{
+    padding:16px 24px;border-top:1px solid var(--line);
+    display:flex;gap:10px;justify-content:flex-end;
+  }
+
+
+  .form-group{margin-bottom:18px}
+  .form-group label{
+    display:block;font-size:.82rem;font-weight:600;color:var(--ink-soft);
+    margin-bottom:6px;
+  }
+  .form-group input,.form-group textarea{
+    width:100%;padding:10px 12px;border:1px solid var(--line);
+    border-radius:var(--radius);font-family:var(--font-sans);font-size:.9rem;
+    transition:border-color .15s;background:var(--surface);color:var(--ink);
+  }
+  .form-group input[type=time],.form-group input[type=number],.form-group input[type=datetime-local]{
+    font-family:var(--font-mono);
+  }
+  .form-group input:focus,.form-group textarea:focus{
+    outline:none;border-color:var(--blue60);box-shadow:0 0 0 1px var(--blue60);
+  }
+  .form-group textarea{resize:vertical;min-height:80px}
+  .form-group small{display:block;margin-top:4px;font-size:.76rem;color:var(--muted)}
+
+
+  .btn{
+    padding:10px 18px;border-radius:0;font-family:var(--font-sans);
+    font-size:.88rem;font-weight:600;cursor:pointer;transition:background .15s;
+    border:none;display:inline-flex;align-items:center;gap:8px;
+  }
+  .btn:focus-visible{outline:2px solid var(--blue60);outline-offset:2px}
+  .btn-primary{background:var(--blue60);color:#fff}
+  .btn-primary:hover{background:var(--blue70)}
+  .btn-secondary{background:var(--g10);color:var(--ink-soft);border:1px solid var(--g20)}
+  .btn-secondary:hover{background:var(--g20)}
+
+
+  .file-upload{
+    border:2px dashed var(--line);border-radius:var(--radius);padding:24px;
+    text-align:center;cursor:pointer;transition:all .15s;
+  }
+  .file-upload:hover{border-color:var(--blue60);background:var(--canvas)}
+  .file-upload input{display:none}
+  .file-upload-icon{font-size:2rem;margin-bottom:8px}
+
+
+  .empty-state{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:60px 20px;color:var(--muted);min-height:60vh;
+  }
+  .empty-state-icon{font-size:3rem;margin-bottom:16px;opacity:.5}
+  .empty-state h3{margin:0 0 8px;color:var(--ink-soft);font-size:1.1rem}
+  .empty-state p{margin:0 0 20px;font-size:.9rem}
+
+
+  footer{text-align:center;color:var(--g60);font-size:.76rem;margin-top:40px;font-family:var(--font-mono)}
+
+
+  @media (max-width:900px){
+    .board.board-urgency{grid-template-columns:1fr}
+  }
+  @media (max-width:780px){
+    .app-shell{flex-direction:column}
+    .sidebar{
+      width:100%;height:auto;position:relative;flex-direction:row;align-items:center;
+      flex-wrap:wrap;padding:12px 16px;gap:10px;
+    }
+    .sidebar-brand{padding:0;flex:none}
+    .sidebar-nav{display:flex;flex-direction:row;gap:2px}
+    .nav-label{display:none}
+    .nav-item{width:auto;border-left:none;border-bottom:3px solid transparent;padding:8px 10px}
+    .nav-item.active{border-left:none;border-bottom-color:var(--blue60)}
+    .sidebar-spacer{display:none}
+    .base-card{margin:0;flex:none}
+    .main-topbar{padding:18px 20px}
+    .wrap{padding:20px 20px 48px}
+    .grid{grid-template-columns:1fr}
+    .kv{grid-template-columns:118px 1fr}
+    h1{font-size:1.3rem}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{transition:none !important}
+    .ai-badge::before{animation:none !important}
+  }
+</style>
+</head>
+<body>
+
+<!--
+  App shell: a fixed header (brand, nav tabs, base-location chip) followed by the three
+  swappable screens rendered by js-app.js:
+    #overview  the Requests board + metric cards (also hosts the Scheduled view)
+    #detail    a single job's full summary (hidden until a card is opened)
+    #purchase  the aggregated materials list + AI recommendations (hidden by default)
+  Modals for settings, CSV import, scheduling and the auto-schedule preview follow below.
+-->
+<!--
+  Auth screen: shown until Supabase confirms a session (see js-auth.js), which then
+  hides this and reveals .app-shell. Handles both login and signup via one form.
+-->
+<div id="authScreen" class="auth-screen">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <span class="bolt" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z" fill="#fff"/></svg>
+      </span>
+      <div>
+        <div class="brand-name">Job Dispatch</div>
+        <div class="brand-sub">Service request analyzer</div>
+      </div>
+    </div>
+    <h2 id="authTitle">Log in</h2>
+    <div id="authMessage" class="auth-message hidden"></div>
+    <form id="authForm">
+      <div class="form-group">
+        <label for="authEmail">Email</label>
+        <input type="email" id="authEmail" autocomplete="email" required>
+      </div>
+      <div class="form-group">
+        <label for="authPassword">Password</label>
+        <input type="password" id="authPassword" autocomplete="current-password" required minlength="6">
+      </div>
+      <button type="button" id="authForgotBtn" class="auth-link-btn auth-forgot">Forgot password?</button>
+      <button type="submit" class="btn btn-primary" id="authSubmitBtn" style="width:100%;justify-content:center;margin-top:6px">Log in</button>
+    </form>
+    <div class="auth-footer">
+      <span id="authToggleText">Don't have an account?</span>
+      <button type="button" class="auth-link-btn" id="authToggleBtn">Sign up</button>
+    </div>
+  </div>
+</div>
+
+
+<!--
+  Shown instead of #authScreen when the user arrives via a password-reset email link
+  (a Supabase "recovery" session). Lets them actually set a new password rather than
+  just being logged in via the recovery link. See js-auth.js.
+-->
+<div id="resetScreen" class="auth-screen hidden">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <span class="bolt" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z" fill="#fff"/></svg>
+      </span>
+      <div>
+        <div class="brand-name">Job Dispatch</div>
+        <div class="brand-sub">Service request analyzer</div>
+      </div>
+    </div>
+    <h2>Choose a new password</h2>
+    <div id="resetMessage" class="auth-message hidden"></div>
+    <form id="resetForm">
+      <div class="form-group">
+        <label for="resetPassword">New password</label>
+        <input type="password" id="resetPassword" autocomplete="new-password" required minlength="6">
+      </div>
+      <div class="form-group">
+        <label for="resetPasswordConfirm">Confirm new password</label>
+        <input type="password" id="resetPasswordConfirm" autocomplete="new-password" required minlength="6">
+      </div>
+      <button type="submit" class="btn btn-primary" id="resetSubmitBtn" style="width:100%;justify-content:center;margin-top:6px">Set new password</button>
+    </form>
+  </div>
+</div>
+
+
+<div class="app-shell hidden">
+
+
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <span class="bolt" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z" fill="#fff"/></svg>
+      </span>
+      <div>
+        <div class="brand-name">Job Dispatch</div>
+        <div class="brand-sub">Service request analyzer</div>
+      </div>
+    </div>
+
+
+    <nav class="sidebar-nav">
+      <p class="nav-label">Workspace</p>
+      <button class="nav-item" id="navRequests" type="button">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Requests
+      </button>
+      <button class="nav-item" id="navScheduled" type="button">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="1" stroke="currentColor" stroke-width="2"/><path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        Scheduled
+      </button>
+      <button class="nav-item" id="navPurchase" type="button">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 4h2l2.4 12.3a1 1 0 0 0 1 .7h8.8a1 1 0 0 0 1-.8L21 8H6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9" cy="20" r="1.4" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="20" r="1.4" stroke="currentColor" stroke-width="2"/></svg>
+        Purchase List
+      </button>
+      <button class="nav-item" id="navSettings" type="button">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        Settings
+      </button>
+    </nav>
+
+
+    <div class="sidebar-spacer"></div>
+
+
+    <div class="account-card">
+      <span class="base-card-label">Signed in as</span>
+      <b id="accountEmail">&nbsp;</b>
+      <button type="button" class="account-logout" id="logoutBtn">Log out</button>
+    </div>
+
+
+    <div class="base-card" id="baseChip" tabindex="0" role="button" title="Click to change base address">
+      <span class="base-card-label">Base location</span>
+      <b id="baseLabel">Not set</b>
+    </div>
+  </aside>
+
+
+  <div class="main">
+    <header class="main-topbar">
+      <div>
+        <p class="eyebrow" id="ovEyebrow">Service requests overview</p>
+        <h1 id="ovTitle">Incoming service requests</h1>
+        <p class="lede" id="ovLede">Sorted by urgency. Select any card to open the full job summary.</p>
+      </div>
+      <div class="main-topbar-actions">
+        <div class="menu-wrap" id="addRequestsWrap">
+          <button class="btn btn-primary" id="addRequestsBtn" title="Add requests" aria-haspopup="true" aria-expanded="false">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Add Requests
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div class="menu" id="addRequestsMenu" role="menu" hidden>
+            <button class="menu-item menu-item-danger" id="menuClearRequests" role="menuitem" type="button">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Clear requests
+            </button>
+            <div class="menu-divider"></div>
+            <button class="menu-item" id="menuImportCsv" role="menuitem" type="button">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Import CSV
+            </button>
+            <button class="menu-item" id="menuConnectForm" role="menuitem" type="button">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M9 17v-2a4 4 0 0 1 4-4h6M15 7l4 4-4 4M3 7h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Connect to form response
+            </button>
+          </div>
+        </div>
+        <button class="btn btn-secondary" id="autoScheduleBtn" title="Auto-schedule unscheduled jobs by urgency and driving distance">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M3 12h4l3-8 4 16 3-8h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Auto-schedule
+        </button>
+        <button class="btn btn-secondary" id="exportBtn" title="Export data">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span id="exportBtnLabel">Export Requests CSV</span>
+        </button>
+      </div>
+    </header>
+
+
+    <div class="wrap">
+
+
+      <!-- ============ PAGE 1: OVERVIEW / SCHEDULED BOARD ============ -->
+      <section id="overview">
+
+
+        <div id="emptyState" class="empty-state hidden">
+          <div class="empty-state-icon">📋</div>
+          <h3>No requests yet</h3>
+          <div class="menu-wrap" id="addRequestsWrapEmpty">
+            <button class="btn btn-primary" id="addRequestsBtnEmpty" aria-haspopup="true" aria-expanded="false">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Add Requests
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div class="menu menu-center" id="addRequestsMenuEmpty" role="menu" hidden>
+              <button class="menu-item" id="menuImportCsvEmpty" role="menuitem" type="button">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Import CSV
+              </button>
+              <button class="menu-item" id="menuConnectFormEmpty" role="menuitem" type="button">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M9 17v-2a4 4 0 0 1 4-4h6M15 7l4 4-4 4M3 7h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Connect to form response
+              </button>
+            </div>
+          </div>
+        </div>
+
+
+        <div id="emptyStateAlt" class="empty-state hidden">
+          <div class="empty-state-icon" id="emptyStateAltIcon">📋</div>
+          <h3 id="emptyStateAltHeading"></h3>
+          <p id="emptyStateAltText"></p>
+        </div>
+
+
+        <div id="dataView" class="hidden">
+          <div class="summary" id="summary"></div>
+          <div class="board-toolbar hidden" id="sortBar">
+            <label for="sortSelect">Sort by</label>
+            <select id="sortSelect">
+              <option value="date-asc">Oldest first</option>
+              <option value="date-desc">Newest first</option>
+              <option value="distance-asc">Closest first</option>
+              <option value="distance-desc">Furthest first</option>
+              <option value="labor-asc">Shortest labor first</option>
+              <option value="labor-desc">Longest labor first</option>
+            </select>
+          </div>
+          <div id="board" class="board"></div>
+          <p class="hint">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#6f6f6f" stroke-width="2"/><path d="M12 8v5M12 16h.01" stroke="#6f6f6f" stroke-width="2" stroke-linecap="round"/></svg>
+            Card border shows urgency. Job type, part of house, labor and urgency are AI-inferred estimates for confirmation.
+          </p>
+        </div>
+      </section>
+
+
+      <!-- ============ PAGE 2: DETAIL ============ -->
+      <section id="detail" class="hidden"></section>
+
+
+      <!-- ============ PAGE 3: PURCHASE LIST ============ -->
+      <section id="purchase" class="hidden"></section>
+
+
+      <footer>Electrician Job Dispatch Platform · Built for service request analysis</footer>
+    </div>
+  </div>
+</div>
+
+
+<!-- ============ MODALS ============ -->
+
+
+<!-- Settings Modal -->
+<div id="settingsModal" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>⚙️ Settings</h2>
+      <button class="modal-close" onclick="closeModal('settingsModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label for="businessName">Business Name</label>
+        <input type="text" id="businessName" placeholder="Your Electric Company">
+      </div>
+      <div class="form-group">
+        <label for="baseAddress">Base Address</label>
+        <input type="text" id="baseAddress" placeholder="123 Main St, City, State ZIP">
+        <small>Used to calculate distance and drive time to customer locations</small>
+      </div>
+      <div class="form-group">
+        <label>Business hours</label>
+        <div style="display:flex;gap:10px;align-items:center">
+          <input type="time" id="businessStart" style="flex:1">
+          <span style="color:var(--muted);font-size:.85rem">to</span>
+          <input type="time" id="businessEnd" style="flex:1">
+        </div>
+        <small>The window each weekday when work can be scheduled.</small>
+      </div>
+      <div class="form-group">
+        <label for="dailyCap">Daily work cap (hours)</label>
+        <input type="number" id="dailyCap" step="0.5" min="0">
+        <small>Covers services and driving and any work activity in a single day.</small>
+      </div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;font-weight:600">
+          <input type="checkbox" id="lunchEnabled" style="width:auto;margin:0">
+          Block a lunch break
+        </label>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:8px">
+          <input type="time" id="lunchStart" style="flex:1">
+          <span style="color:var(--muted);font-size:.85rem">to</span>
+          <input type="time" id="lunchEnd" style="flex:1">
+        </div>
+        <small>When enabled, jobs route around this window. Lunch does not count toward the daily cap.</small>
+      </div>
+      <div class="form-group">
+        <label>Target scheduling window (working days)</label>
+        <div class="deadline-grid">
+          <div><span>High urgency</span><input type="number" id="deadlineHighDays" min="1" step="1"></div>
+          <div><span>Medium urgency</span><input type="number" id="deadlineMediumDays" min="1" step="1"></div>
+          <div><span>Low urgency</span><input type="number" id="deadlineLowDays" min="1" step="1"></div>
+          <div><span>Non-repair / project</span><input type="number" id="deadlineNonRepairDays" min="1" step="1"></div>
+        </div>
+        <small>How soon each priority should ideally be booked. High urgency always uses the high value, even for non-repair jobs. If a job cannot fit its window, it is flagged on its detail page.</small>
+      </div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;font-weight:600">
+          <input type="checkbox" id="allowMoveBooked" style="width:auto;margin:0">
+          Let auto-schedule move already-booked jobs
+        </label>
+        <small>Off by default. When on, the auto-scheduler may re-time confirmed bookings to cut driving, which means those customers would need a new booking email.</small>
+      </div>
+      <div class="form-group">
+        <label for="aiProvider">AI provider (optional)</label>
+        <select id="aiProvider">
+          <option value="">None (offline only)</option>
+        </select>
+        <small id="aiProviderNote"></small>
+      </div>
+      <div class="form-group">
+        <label for="aiApiKey">AI API key</label>
+        <input type="password" id="aiApiKey" placeholder="Paste your API key">
+        <small>Powers AI job classification and the Purchase List recommendations. Saved to your account and sent to the provider (via a secure relay for providers that block direct browser calls) to make each request. Leave the provider on "None" to stay fully offline.</small>
+      </div>
+      <div class="form-group">
+        <label for="aiModel">Model</label>
+        <input type="text" id="aiModel" placeholder="Model name">
+        <small>Leave blank to use the provider's default.</small>
+      </div>
+      <div class="form-group hidden" id="aiBaseUrlRow">
+        <label for="aiBaseUrl">Endpoint URL</label>
+        <input type="text" id="aiBaseUrl" placeholder="https://...">
+        <small>Required for Azure and custom providers (full chat-completions URL). For IBM watsonx, paste your region base URL, for example https://us-south.ml.cloud.ibm.com</small>
+      </div>
+      <div class="form-group hidden" id="aiProjectIdRow">
+        <label for="aiProjectId">IBM Project ID</label>
+        <input type="text" id="aiProjectId" placeholder="watsonx.ai project_id">
+        <small>Required for IBM watsonx.ai. Find it in your watsonx project under Manage, General.</small>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('settingsModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- Import Modal -->
+<div id="importModal" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>📥 Import Customer Data</h2>
+      <button class="modal-close" onclick="closeModal('importModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin:0 0 16px;color:var(--muted);font-size:.88rem">
+        Upload a CSV file with customer service requests. Columns are matched by header name. Required: a problem-description column. Strongly recommended: Address (needed for auto-scheduling, distance, and routing) and Date Requested (used for sorting and scheduling priority). Optional: Customer Name, Phone, Email (email enables booking confirmations).
+      </p>
+      <div class="file-upload" onclick="document.getElementById('csvFile').click()">
+        <div class="file-upload-icon">📄</div>
+        <div><strong>Click to select CSV file</strong></div>
+        <div style="font-size:.82rem;color:var(--muted);margin-top:4px">or drag and drop here</div>
+        <input type="file" id="csvFile" accept=".csv" onchange="handleFileSelect(event)">
+      </div>
+      <div id="importPreview" class="hidden" style="margin-top:16px">
+        <p style="font-size:.82rem;color:var(--blue60);font-weight:600;margin:0 0 8px">Preview:</p>
+        <div id="previewContent" style="font-size:.82rem;color:var(--muted)"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('importModal')">Cancel</button>
+      <button class="btn btn-primary" id="confirmImport" onclick="confirmImport()" disabled>Import Data</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- Schedule Modal -->
+<div id="scheduleModal" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="schedTitle">Schedule service</h2>
+      <button class="modal-close" onclick="closeModal('scheduleModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p id="schedRationale" style="margin:0 0 18px;color:var(--muted);font-size:.88rem"></p>
+      <div class="form-group">
+        <label for="schedStart">Start</label>
+        <input type="datetime-local" id="schedStart" oninput="onScheduleStartChange()">
+      </div>
+      <div class="form-group">
+        <label for="schedEnd">End</label>
+        <input type="datetime-local" id="schedEnd" oninput="refreshScheduleWarnings()">
+      </div>
+      <button class="btn btn-secondary" id="schedSuggestBtn" type="button">Use suggested window</button>
+      <div id="schedWarn" style="margin-top:16px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('scheduleModal')">Cancel</button>
+      <button class="btn btn-primary" id="schedConfirmBtn" onclick="confirmSchedule()">Confirm schedule</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- Auto-schedule preview -->
+<div id="autoPlanModal" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Proposed schedule</h2>
+      <button class="modal-close" onclick="closeModal('autoPlanModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="autoPlanBody"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('autoPlanModal')">Cancel</button>
+      <button class="btn btn-primary" id="autoPlanApplyBtn" onclick="applyAutoPlan()">Apply schedule</button>
+    </div>
+  </div>
+</div>
+
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="supabase-config.js"></script>
+<script src="js-auth.js"></script>
+<script src="js-inference-engine.js"></script>
+<script src="js-ai-providers.js"></script>
+<script src="js-ai-enrichment.js"></script>
+<script src="js-app.js"></script>
+
+
+<!-- Made with Bob -->
+</body>
+</html>
