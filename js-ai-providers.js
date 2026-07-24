@@ -1,5 +1,5 @@
 /**
- * AI PROVIDERS (optional)
+ * AI PROVIDERS
  * ----------------------------------------------------------------------------
  * Unified, browser-direct wrapper over several LLM APIs so the user can bring whatever
  * key they have. The platform is compatible with IBM watsonx.ai alongside the major
@@ -34,6 +34,9 @@ const AIProvider = (function () {
 
   // Requests are aborted after this long so a hung provider/proxy does not spin forever.
   const REQUEST_TIMEOUT_MS = 60000;
+  // Web-search requests need more headroom: the model runs several live searches and reads
+  // the results before generating, which routinely takes longer than a plain completion.
+  const WEB_SEARCH_TIMEOUT_MS = 300000;
 
   // Shared CORS-relay (a Supabase Edge Function, see supabase-edge-function-ai-proxy.ts)
   // used automatically for any provider that isn't reachable directly from a browser, so
@@ -104,10 +107,10 @@ const AIProvider = (function () {
   // POST JSON with a timeout and proxy support. On an HTTP error it throws an Error whose
   // .status/.detail carry the response code + message so callers can react (see the
   // param-fallback retry). Network/timeout failures map to a clear, actionable message.
-  async function postJson(url, headers, body, cfg) {
+  async function postJson(url, headers, body, cfg, timeoutMs) {
     const target = applyProxy(url, cfg && cfg.proxyUrl);
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const timer = setTimeout(() => controller.abort(), timeoutMs || REQUEST_TIMEOUT_MS);
     let response;
     try {
       response = await fetch(target, { method: 'POST', headers, body: JSON.stringify(body), signal: controller.signal });
@@ -136,9 +139,9 @@ const AIProvider = (function () {
 
   // Some OpenAI-compatible models reject `temperature` or `response_format`. On a 400 that
   // names one of them, drop it and retry once so those models still work.
-  async function postJsonWithParamFallback(url, headers, body, cfg) {
+  async function postJsonWithParamFallback(url, headers, body, cfg, timeoutMs) {
     try {
-      return await postJson(url, headers, body, cfg);
+      return await postJson(url, headers, body, cfg, timeoutMs);
     } catch (err) {
       if (err && err.status === 400 && err.detail) {
         const d = String(err.detail).toLowerCase();
@@ -146,7 +149,7 @@ const AIProvider = (function () {
         let retry = false;
         if (d.indexOf('temperature') !== -1 && 'temperature' in nb) { delete nb.temperature; retry = true; }
         if ((d.indexOf('response_format') !== -1 || d.indexOf('json') !== -1) && 'response_format' in nb) { delete nb.response_format; retry = true; }
-        if (retry) return postJson(url, headers, nb, cfg);
+        if (retry) return postJson(url, headers, nb, cfg, timeoutMs);
       }
       throw err;
     }
@@ -171,7 +174,8 @@ const AIProvider = (function () {
       'anthropic-version': '2023-06-01',
       'anthropic-dangerous-direct-browser-access': 'true'
     };
-    const data = await postJson(PROVIDERS.anthropic.url, headers, body, cfg);
+    const data = await postJson(PROVIDERS.anthropic.url, headers, body, cfg,
+      opts.webSearch ? WEB_SEARCH_TIMEOUT_MS : REQUEST_TIMEOUT_MS);
 
     const blocks = Array.isArray(data && data.content) ? data.content : [];
     let text = '';
@@ -277,7 +281,8 @@ const AIProvider = (function () {
     if (engine === 'azure') headers['api-key'] = cfg.apiKey;
     else headers['Authorization'] = `Bearer ${cfg.apiKey}`;
 
-    const data = await postJsonWithParamFallback(url, headers, body, cfg);
+    const data = await postJsonWithParamFallback(url, headers, body, cfg,
+      opts.webSearch ? WEB_SEARCH_TIMEOUT_MS : REQUEST_TIMEOUT_MS);
     const choice = data && data.choices && data.choices[0];
     const text = extractContentText(choice && choice.message && choice.message.content);
     if (!text.trim()) throw new Error('The AI provider returned an empty response.');
