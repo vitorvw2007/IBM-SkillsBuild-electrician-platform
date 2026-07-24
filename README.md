@@ -55,4 +55,5 @@ The offline inference engine, which reads and classifies each incoming request, 
 Finally, AI served a dual role: it was used to help build the platform, and it is also built into the platform as a core feature that understands requests and generates material recommendations. Even so, the product was designed to function without AI as well, through the offline engine, so it remains dependable whether or not an AI provider is connected.
 
 
-
+Created by Arthur Gama and Vitor Vieira Werneck.
+Link to website: https://6a60c1ec605bd31219efe1a1--fancy-basbousa-9d5517.netlify.app/
